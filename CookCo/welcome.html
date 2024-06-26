@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script defer src="login.js"></script>
+    <title>FoodCo</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+          background-image: url("https://cdn2.steamgriddb.com/file/sgdb-cdn/hero/2b4a70dc918fea2c26d42edc6dbadc46.png");
+          background-size: cover;
+
+        }
+        </style>
+    <script>
+        function myFunction(){
+            var personName = sessionStorage.getItem("Name");
+            document.getElementById("demo").innerHTML = personName;
+        }
+    </script>
+</head>
+<body onload="myFunction()">
+    <main id="fmain-holder">
+    <h1 id="food-header">Welcome <span id="demo"></span>!</h1>
+    <form id="food-form">
+        <h3>
+            Enter Your Main Ingredient Below
+        </h3>
+        <h3>Please be as specific as possible</h3>
+        <h3 id="example">Don't Say: fish</h3>
+        <h3 id="gexample">Say: salmon</h3>
+        
+        <input type="text" name="ingredients" id="ingredients-field" class="food-form-field" placeholder="Chicken" autocomplete="off">
+        <input id="fsubmit" class="food-form-submit" type="button" value="Submit" onclick='storeing(ingredients.value)'/>
+        <p id="demo"></p>
+        <script>
+            function storeing(ing){
+                if (ing != "") {
+                  appending(ing);
+                  
+                  window.location.href='meals.html';
+                  alert("Lets make something with " + ing);
+                  
+                }else{
+                  alert("You have to fill out the available ingredients field!");
+                }
+            }
+        </script>
+        <script>
+            let ingList = [];
+            sessionStorage.setItem("Items", ingList);
+            function appending(i1){
+                
+                ingList.push(i1);
+                sessionStorage.setItem("Items", ingList);
+                document.getElementById("demo").innerHTML = JSON.stringify(ingList);
+            }
+          </script>
+    </form>
+    
+</main>
+</body>
+</html>
