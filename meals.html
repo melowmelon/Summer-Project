@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>FoodCo</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            background-image: url("https://cdn2.steamgriddb.com/file/sgdb-cdn/hero/2b4a70dc918fea2c26d42edc6dbadc46.png");
+            background-size: cover;
+        }
+    </style>
+</head>
+<body>
+    <main id="fmain-holder">
+        <h1 id="food-header">Here Are Some Things You Can Make</h1>
+        <div class="food" id="output"></div>
+        <h3 id="good-food"></h3>
+    </main>
+    <script>
+        const showMealDetails = (mealId) => {
+            // Replace this with your desired action when a meal is clicked.
+            alert(`Meal ID: ${mealId} clicked!`);
+        };
+
+        let url = "https://www.themealdb.com/api/json/v1/1/filter.php?i=" + sessionStorage.getItem("Items");
+        fetch(url)
+            .then(res => {
+                return res.json();
+            })
+            .then(data => {
+                console.log(data);
+                const outputDiv = document.getElementById('output');
+                if (data.meals === null) {
+                    output.innerHTML += "probably nothing :(";
+                    setTimeout(function(){
+                        alert('No meals can be made with ' + sessionStorage.getItem("Items") + '!\nPlease ensure there are no spelling errors and try again!');
+                        window.location.href='welcome.html';
+                    }, 100)
+                    
+                } else {
+
+                    let count = 0;
+                    let thumb = "";
+                    data.meals.forEach(meal => {
+                        if(count < 5){
+                            let mealD = "https://www.themealdb.com/meal.php?c=" + meal.idMeal;
+                            const paragraph = document.createElement('p');
+                            paragraph.textContent = meal.strMeal;
+                            paragraph.style.cursor = 'pointer';
+                            paragraph.addEventListener('click', () => {
+                                window.open(
+                                    mealD,
+                                    '_blank'
+                                            );
+                            });
+                            outputDiv.appendChild(paragraph);
+                            count++;
+                        } 
+                    });
+                    
+                }
+            })
+            .catch(error => console.log(error));
+        </script>
+        
+</body>
+</html>
