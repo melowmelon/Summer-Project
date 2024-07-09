@@ -1,0 +1,341 @@
+import pygame
+import random
+import time
+
+pygame.init()
+
+width, height = 1000, 600
+window = pygame.display.set_mode((width, height))
+pygame.display.set_caption("Merin's Game")
+
+window.fill((120, 200, 80))
+owidth, oheight = 50, 50
+
+def draw(obj, color):
+    pygame.draw.rect(window, color, obj)
+
+class Bullet:
+    def __init__(self, x, y, direction):
+        self.original_surface = pygame.Surface((30, 20), pygame.SRCALPHA)
+        self.original_surface.fill((255, 0, 0))
+
+        # Ensure that direction is always a valid key code
+        if direction is not None:
+            self.direction = direction
+        else:
+            # Set a default direction (you can choose an appropriate default)
+            self.direction = pygame.K_UP
+
+        self.rotated_surface = pygame.transform.rotate(self.original_surface, 90) if self.direction in [pygame.K_UP, pygame.K_DOWN] else self.original_surface
+        self.rect = self.rotated_surface.get_rect(x=x, y=y)
+
+    def move(self):
+        movement = {"left": (-10, 0), "right": (10, 0), "up": (0, -10), "down": (0, 10), "z": (0, 0)}  # Add key for "z"
+
+        # Convert key value to string representation
+        key_name = pygame.key.name(self.direction)
+        self.rect.x += movement.get(key_name, (0, 0))[0]
+        self.rect.y += movement.get(key_name, (0, 0))[1]
+
+
+class Enemy:
+    def __init__(self, x, y, spawn_from_edge=False):
+        self.hit_count = 0
+        self.original_surface = pygame.Surface((owidth, oheight), pygame.SRCALPHA)
+        pygame.draw.rect(self.original_surface, (220, 20, 60), (0, 0, owidth, oheight))
+        self.rect = self.original_surface.get_rect(x=x, y=y)
+
+        if spawn_from_edge:
+            self.rect.x, self.rect.y = (0, random.randint(0, height - oheight)) if random.choice(
+                [True, False]) else (width - owidth, random.randint(0, height - oheight))
+        else:
+            self.rect.x, self.rect.y = x, y
+
+        self.speed = 0.6
+        self.freeze_timer = 0.0
+        self.last_freeze_time = 0.0
+        self.freeze_duration = 3
+
+    def duplicate(self):
+        return Enemy(self.rect.x, self.rect.y)
+
+    def move_towards_obj1(self, obj1, clock):
+        if self.freeze_timer <= 0:
+            self.rect.x += self.speed if self.rect.x < obj1.x else -self.speed
+            self.rect.y += self.speed if self.rect.y < obj1.y else -self.speed
+        else:
+            # Enemy is frozen, do not move
+            self.freeze_timer = max(0, self.freeze_timer - clock.get_time() / 1000.0)
+
+
+class Circle:
+    def __init__(self, x, y, color):
+        self.radius = 20
+        self.color = color
+        self.surface = pygame.Surface((2 * self.radius, 2 * self.radius), pygame.SRCALPHA)
+        pygame.draw.circle(self.surface, self.color, (self.radius, self.radius), self.radius)
+        self.rect = self.surface.get_rect(center=(x, y))
+
+
+class Circle2:
+    def __init__(self, x, y):
+        self.max_radius, self.color = 50, (239, 48, 56, 120)
+        self.grow_speed, self.shrink_speed = 0.5, 0.5
+        self.surface = pygame.Surface((2 * self.max_radius, 2 * self.max_radius), pygame.SRCALPHA)
+        pygame.draw.circle(self.surface, self.color, (self.max_radius, self.max_radius), self.max_radius)
+        self.rect = self.surface.get_rect(center=(x, y))
+        self.current_radius = self.max_radius
+        self.growing = True
+
+    def grow_shrink(self):
+        if self.growing:
+            self.current_radius += self.grow_speed
+            if self.current_radius >= 1.7 * self.max_radius:
+                self.growing = False
+        else:
+            self.current_radius -= self.shrink_speed
+            if self.current_radius <= 50:
+                self.growing = True
+
+        # Redraw the circle with the updated radius
+        self.surface = pygame.Surface((2 * self.current_radius, 2 * self.current_radius), pygame.SRCALPHA)
+        pygame.draw.circle(self.surface, self.color, (self.current_radius, self.current_radius), self.current_radius)
+        self.rect = self.surface.get_rect(center=self.rect.center)
+
+
+def draw_circle(circle):
+    window.blit(circle.surface, circle.rect)
+
+
+def main():
+    obj1 = pygame.Rect(500, 300, owidth, oheight)
+    enemies, bullets, circles = [], [], []
+
+    distance_max, catch_up_speed = 40, 4
+    bullet_speed, bullet_direction, last_key_pressed = 10, "", None
+    bullet_visible, bullet_cooldown, last_bullet_time = False, 0.25, 0
+    enemy_spawn_cooldown, last_enemy_spawn_time = 2, time.time()
+    current_time, last_circle_spawn_time, circle_spawn_cooldown = time.time(), time.time(), 2
+    max_enemies = 2
+
+    clock = pygame.time.Clock()
+    run = True
+    red_circle = None
+    circle_colors = [(255, 255, 0), (0, 255, 0), (0, 0, 255), (255, 165, 0)]  # Yellow, Green, Blue, Orange
+    last_circle_color_index = 0
+    enemy_contact_timer = {}
+    bullet_hit_count = {}
+
+    green_circle_collided = False
+    green_circle_pushback_distance = 20
+
+    blue_circle = Circle(50, 50, (0, 0, 255))
+    circles.append(blue_circle)
+
+    while run:
+        window.fill((120, 200, 80))
+        obj1_rect = pygame.Rect(obj1.x, obj1.y, owidth, oheight)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                break
+
+        keys = pygame.key.get_pressed()
+        current_time = time.time()
+
+        horizontal_movement = 0
+        vertical_movement = 0
+
+        for dir in ["left", "right", "up", "down"]:
+            if keys[getattr(pygame, f"K_{dir.upper()}")]:
+                last_key_pressed, bullet_direction = getattr(pygame, f"K_{dir.upper()}"), dir
+                horizontal_movement += -2 if dir == "left" else 2 if dir == "right" else 0
+                vertical_movement += -2 if dir == "up" else 2 if dir == "down" else 0
+
+        obj1.x += horizontal_movement
+        obj1.y += vertical_movement
+
+        if keys[pygame.K_z] and current_time - last_bullet_time > bullet_cooldown:
+
+            if blue_circle and obj1_rect.colliderect(blue_circle.rect):
+                # Blue circle collision logic
+                bullet_x1, bullet_y1 = obj1.x - 2, obj1.y + oheight // 2 - 10
+                bullet_x2, bullet_y2 = obj1.x + owidth - 28, obj1.y + oheight // 2 - 10
+
+                new_bullet1 = Bullet(bullet_x1, bullet_y1, pygame.K_LEFT)
+                new_bullet2 = Bullet(bullet_x2, bullet_y2, pygame.K_RIGHT)
+
+                bullets.extend([new_bullet1, new_bullet2])
+
+            else:
+                # Normal bullet logic
+                bullet_rect = obj1.move(owidth // 2 - 10, oheight // 2 - 10)
+
+                if isinstance(last_key_pressed, tuple):
+                    new_bullet = Bullet(*bullet_rect.topleft, last_key_pressed)
+                else:
+                    bullet_x, bullet_y = obj1.x - 2 if last_key_pressed == pygame.K_LEFT else obj1.x + owidth - 28, obj1.y + oheight // 2 - 10
+                    new_bullet = Bullet(bullet_x, bullet_y, last_key_pressed)
+
+                    bullets.append(new_bullet)
+
+            bullet_visible = True
+            last_bullet_time = current_time
+
+            if current_time - last_circle_spawn_time > circle_spawn_cooldown:
+                new_circle = Circle(random.randint(0, width - owidth), random.randint(0, height - oheight),
+                                    circle_colors[last_circle_color_index])
+                circles.append(new_circle)
+                last_circle_color_index = (last_circle_color_index + 1) % len(circle_colors)
+                last_circle_spawn_time = current_time  # Update the spawn time only when a new circle is spawned
+
+        bullets_to_remove = []
+        for bullet in bullets:
+            window.blit(bullet.rotated_surface, bullet.rect)
+            bullet.move()
+
+        enemies_to_remove = []
+        for bullet in bullets:
+            for enemy in enemies:
+                if bullet.rect.colliderect(enemy.rect):
+                    bullets_to_remove.append(bullet)
+
+                    if enemy not in bullet_hit_count:
+                        bullet_hit_count[enemy] = 1
+                    else:
+                        bullet_hit_count[enemy] += 1
+                        if bullet_hit_count[enemy] >= 2:
+                            pushback_direction = pygame.Vector2(obj1.x - enemy.rect.x,
+                                                                 obj1.y - enemy.rect.y).normalize()
+                            pushback_distance = green_circle_pushback_distance
+
+                            # Apply pushback to the enemy
+                            enemy.rect.x += pushback_direction.x * pushback_distance
+                            enemy.rect.y += pushback_direction.y * pushback_distance
+
+                            # Check if enemy is still within window boundaries
+                            enemy.rect.x = max(0, min(enemy.rect.x, width - owidth))
+                            enemy.rect.y = max(0, min(enemy.rect.y, height - oheight))
+
+                            enemies_to_remove.append(enemy)
+
+            # Remove enemies based on collisions
+            enemies[:] = [enemy for enemy in enemies if enemy not in enemies_to_remove]
+
+            for bullet in bullets:
+                for circle in circles:
+                    if bullet.rect.colliderect(circle.rect):
+                        pass
+
+        bullets = [b for b in bullets if b not in bullets_to_remove]
+        bullet_visible = False
+
+        targets = {"Enemy": enemies, "Circle": circles}
+        targets_to_remove = []
+        for target_type, target_list in targets.items():
+            for target in target_list:
+                if target_type == "Enemy":
+                    target.move_towards_obj1(obj1, clock)
+        for target in enemies:
+            if target.freeze_timer > 0:
+                target.freeze_timer = max(0, target.freeze_timer - clock.get_time() / 1000.0)
+
+        for target_type, target_list in targets.items():
+            for bullet in bullets:
+                for target in target_list:
+                    if bullet.rect.colliderect(target.rect):
+                        bullets_to_remove.append(bullet)
+                        if target_type == "Enemy":
+                            targets_to_remove.append(target)
+
+        for target_type, target_list in targets.items():
+            targets[target_type][:] = [target for target in target_list if target not in targets_to_remove]
+
+        targets_to_spawn = {"Circle": [Circle(random.randint(0, width - owidth),
+                                             random.randint(0, height - oheight),
+                                             circle_colors[last_circle_color_index])],
+                            "Enemy": [Enemy(random.randint(0, width - owidth),
+                                            random.randint(0, height - oheight), spawn_from_edge=True).duplicate() for _ in
+                                      range(max_enemies - len(enemies))]}
+
+        for target_type, new_targets in targets_to_spawn.items():
+            if current_time - locals()[f"last_{target_type.lower()}_spawn_time"] > locals()[
+                f"{target_type.lower()}_spawn_cooldown"]:
+                targets[target_type].extend(new_targets)
+                locals()[f"last_{target_type.lower()}_spawn_time"] = current_time
+
+        draw(obj1, (100, 100, 50, 200))
+
+        for target_type, target_list in targets.items():
+            color = (220, 20, 60) if target_type == "Enemy" else (255, 187, 85)
+            for target in target_list:
+                if target_type == "Circle":
+                    draw_circle(target)
+                else:
+                    draw(target.rect, color)
+
+        for circle in circles:
+            if obj1_rect.colliderect(circle.rect):
+                if circle.color == (255, 255, 0):  # Yellow
+                    # Create a new Circle2 when colliding
+                    red_circle = Circle2(obj1.x, obj1.y)
+                    circles.remove(circle)
+                    enemy_contact_timer = {}
+
+                elif circle.color == (0, 0, 255):  # Blue
+                    bullet_x1, bullet_y1 = obj1.x - 2, obj1.y + oheight // 2 - 10
+                    bullet_x2, bullet_y2 = obj1.x + owidth - 28, obj1.y + oheight // 2 - 10
+
+                    new_bullet1 = Bullet(bullet_x1, bullet_y1, pygame.K_LEFT)
+                    new_bullet2 = Bullet(bullet_x2, bullet_y2, pygame.K_RIGHT)
+                    circles.remove(circle)
+
+                    bullets.extend([new_bullet1, new_bullet2])
+                elif circle.color == (255, 165, 0):  # Orange
+                    # Implement behavior for orange circle (do nothing, for example)
+                    pass
+                elif circle.color == (0, 255, 0):  # Green
+                    green_circle_collided = True
+                    green_circle_pushback_direction = pygame.Vector2(obj1.x - circle.rect.x, obj1.y - circle.rect.y).normalize()
+                    green_circle_pushback_distance = green_circle_pushback_distance
+
+                    for enemy in enemies:
+                        enemy.rect.x += green_circle_pushback_direction.x * green_circle_pushback_distance
+                        enemy.rect.y += green_circle_pushback_direction.y * green_circle_pushback_distance
+
+                        # Keep enemy inside screen
+                        enemy.rect.x = max(0, min(enemy.rect.x, width - owidth))
+                        enemy.rect.y = max(0, min(enemy.rect.y, height - oheight))
+
+                    circles.remove(circle)
+
+
+        for target in enemies:
+            if red_circle and target.rect.colliderect(red_circle.rect):
+                if target not in enemy_contact_timer:
+                    enemy_contact_timer[target] = current_time
+                else:
+                    contact_duration = current_time - enemy_contact_timer[target]
+                    if contact_duration >= 1.4:
+                        enemies.remove(target)
+                        del enemy_contact_timer[target]
+
+        # Draw yellow circles
+        for circle in circles:
+            draw_circle(circle)
+
+        # Draw red circle if it exists
+        if red_circle:
+            red_circle.rect.center = (obj1.x + owidth//2, obj1.y + oheight//2)
+            draw_circle(red_circle)
+            red_circle.grow_shrink()
+        
+        draw(obj1_rect, (83,104,120, 200))
+
+        pygame.display.update()
+        clock.tick(60)
+
+    pygame.quit()
+
+if __name__ == "__main__":
+    main()
